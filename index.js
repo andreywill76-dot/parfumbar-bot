@@ -20,17 +20,37 @@ app.get('/webhook', (req, res) => {
 app.post('/webhook', async (req, res) => {
   res.sendStatus(200);
   console.log('Incoming webhook:', JSON.stringify(req.body, null, 2));
+
   const entry = req.body.entry?.[0];
-  const messaging = entry?.messaging?.[0];
-  if (!messaging?.message?.text) return;
-  const senderId = messaging.sender.id;
-  const text = messaging.message.text;
+  if (!entry) return;
+
+  // Формат 1: entry.messaging (старый)
+  let messaging = entry.messaging?.[0];
+
+  // Формат 2: entry.changes (новый)
+  if (!messaging) {
+    const change = entry.changes?.[0];
+    messaging = change?.value;
+  }
+
+  console.log('Messaging object:', JSON.stringify(messaging, null, 2));
+
+  const text = messaging?.message?.text || messaging?.messages?.[0]?.text;
+  const senderId = messaging?.sender?.id || messaging?.contacts?.[0]?.wa_id;
+
+  if (!text || !senderId) {
+    console.log('No text or senderId, skipping');
+    return;
+  }
+
   console.log('Message from:', senderId, ':', text);
+
   if (!conversations[senderId]) conversations[senderId] = [];
   conversations[senderId].push({ role: 'user', content: text });
   if (conversations[senderId].length > 20) {
     conversations[senderId] = conversations[senderId].slice(-20);
   }
+
   try {
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
